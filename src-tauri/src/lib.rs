@@ -1,6 +1,7 @@
 mod scanner;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use scanner::{ScanControl, ScanResult};
 use tauri::{AppHandle, State};
@@ -49,6 +50,59 @@ async fn recycle_paths(paths: Vec<String>) -> Result<(), String> {
     .map_err(|err| format!("Recycle task failed: {err}"))?
 }
 
+#[tauri::command]
+async fn open_path(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = PathBuf::from(path);
+        let path = std::fs::canonicalize(&path).unwrap_or(path);
+        open_in_file_manager(&path)
+    })
+    .await
+    .map_err(|err| format!("Open task failed: {err}"))?
+}
+
+#[cfg(windows)]
+fn open_in_file_manager(path: &Path) -> Result<(), String> {
+    let mut command = Command::new("explorer");
+    if path.is_file() {
+        command.arg(format!("/select,{}", path.display()));
+    } else {
+        command.arg(path);
+    }
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| format!("Unable to open File Explorer: {err}"))
+}
+
+#[cfg(target_os = "macos")]
+fn open_in_file_manager(path: &Path) -> Result<(), String> {
+    let mut command = Command::new("open");
+    if path.is_file() {
+        command.arg("-R").arg(path);
+    } else {
+        command.arg(path);
+    }
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| format!("Unable to open Finder: {err}"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_in_file_manager(path: &Path) -> Result<(), String> {
+    let target = if path.is_file() {
+        path.parent().unwrap_or(path)
+    } else {
+        path
+    };
+    Command::new("xdg-open")
+        .arg(target)
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| format!("Unable to open file manager: {err}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -58,7 +112,8 @@ pub fn run() {
             scan_path,
             prioritize_path,
             cancel_scan,
-            recycle_paths
+            recycle_paths,
+            open_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pathlight");

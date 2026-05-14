@@ -88,12 +88,14 @@ let displayedScanProgress = 0;
 let progressAnimationFrame: number | null = null;
 let scanPhraseTimer: number | null = null;
 let scanPhraseIndex = 0;
+let contextMenuCleanup: (() => void) | null = null;
+let lastWindowTitle = "";
+let lastInternalDragEnded = 0;
 let lastExternalDrop = {
   path: "",
   at: 0,
 };
 let lastProgressValues = {
-  status: "",
   path: "",
   summary: "",
 };
@@ -236,15 +238,18 @@ function render() {
     return;
   }
 
+  hideContextMenu();
   const root = result?.root ?? null;
   const current = root ? findNode(root, currentPath) ?? root : null;
 
   if (!root || !current) {
+    void updateWindowTitle(null);
     app.innerHTML = `<main class="entry-shell ${isExternalDragOver ? "is-drop-over" : ""}">${renderEmptyState()}</main>`;
   } else {
+    void updateWindowTitle(current);
     app.innerHTML = `
       <main class="app-shell has-scan ${isExternalDragOver ? "is-drop-over" : ""}">
-        ${renderTopBar(root)}
+        ${renderTopBar(root, current)}
         ${renderWorkspace(root, current)}
         ${renderCollector()}
       </main>
@@ -255,22 +260,10 @@ function render() {
   queueMicrotask(() => createIcons({ icons }));
 }
 
-function renderTopBar(root: ScanNode | null) {
-  const status = isScanning
-    ? root
-      ? `${formatBytes(root.totalSize)} found in ${formatDuration(progress?.elapsedMs ?? result?.elapsedMs ?? 0)}`
-      : "Analyzing..."
-    : root
-      ? `${formatNodeSize(root)} in ${formatDuration(result?.elapsedMs ?? 0)}`
-      : "Ready";
-
+function renderTopBar(root: ScanNode | null, current: ScanNode | null) {
   return `
     <header class="topbar">
-      <button class="brand" data-root>
-        <span class="brand-mark"></span>
-        <span>Pathlight</span>
-      </button>
-      <div class="topbar-status">${escapeHtml(status)}</div>
+      ${root && current ? renderHeaderBreadcrumbs(root, current) : `<div class="topbar-path">Drop a folder or disk</div>`}
       <div class="topbar-actions">
         <button class="btn-sm-outline" data-open>
           <i data-lucide="folder-open"></i>
@@ -281,6 +274,29 @@ function renderTopBar(root: ScanNode | null) {
       </div>
       ${isScanning ? `<div class="topbar-progress"><span data-scan-meter style="width:${Math.max(2, displayedScanProgress)}%"></span></div>` : ""}
     </header>
+  `;
+}
+
+function renderHeaderBreadcrumbs(root: ScanNode, current: ScanNode) {
+  const crumbs = pathToNode(root, current.path);
+  const visibleCrumbs: Array<ScanNode | "ellipsis"> =
+    crumbs.length > 4 ? [crumbs[0], "ellipsis", ...crumbs.slice(-3)] : crumbs;
+  return `
+    <nav class="topbar-path" title="${escapeHtml(readablePath(current.path))}">
+      ${visibleCrumbs
+        .map((crumb) => {
+          if (crumb === "ellipsis") {
+            return `<span class="topbar-ellipsis">...</span>`;
+          }
+          const active = crumb.path === current.path;
+          return `
+            <button class="${active ? "active" : ""}" data-breadcrumb="${encodePath(crumb.path)}">
+              ${escapeHtml(displayNodeName(crumb))}
+            </button>
+          `;
+        })
+        .join('<i data-lucide="chevron-right"></i>')}
+    </nav>
   `;
 }
 
@@ -323,18 +339,6 @@ function renderEmptyState() {
 function renderWorkspace(root: ScanNode, current: ScanNode) {
   return `
     <section class="workspace">
-      <div class="scan-summary">
-        <div>
-          <div class="eyebrow" title="${escapeHtml(readablePath(root.path))}">${escapeHtml(readablePath(root.path))}</div>
-          <div class="summary-title">${escapeHtml(displayNodeName(current))}</div>
-        </div>
-        <div class="summary-stats">
-          <span>${formatNodeSize(current)}</span>
-          <span>${formatDuration(result?.elapsedMs ?? 0)}</span>
-        </div>
-      </div>
-      ${renderBreadcrumbs(root, current)}
-      ${renderLargestPath(current)}
       <div class="content-grid">
         <section class="visual-panel">
           ${renderDonut(current)}
@@ -342,54 +346,6 @@ function renderWorkspace(root: ScanNode, current: ScanNode) {
         <aside class="drill-panel">
           ${renderDrillList(current)}
         </aside>
-      </div>
-    </section>
-  `;
-}
-
-function renderBreadcrumbs(root: ScanNode, current: ScanNode) {
-  const crumbs = pathToNode(root, current.path);
-  return `
-    <nav class="breadcrumbs">
-      ${crumbs
-        .map((crumb, index) => {
-          const active = index === crumbs.length - 1;
-          return `
-            <button class="${active ? "active" : ""}" data-breadcrumb="${encodePath(crumb.path)}">
-              ${escapeHtml(displayNodeName(crumb))}
-            </button>
-          `;
-        })
-        .join('<i data-lucide="chevron-right"></i>')}
-    </nav>
-  `;
-}
-
-function renderLargestPath(start: ScanNode) {
-  const items = visibleChildren(start)
-    .filter((child) => child.kind !== "other" && child.totalSize > 0)
-    .slice(0, 3);
-
-  if (!items.length) {
-    return "";
-  }
-
-  return `
-    <section class="largest-paths">
-      <div class="largest-paths-label">Largest paths</div>
-      <div class="largest-path-list">
-      ${items
-        .map((item) => {
-          const share = start.totalSize ? item.totalSize / start.totalSize : 0;
-          return `
-            <button class="largest-path-row" data-drill="${encodePath(item.path)}">
-              <span class="largest-path-name">${escapeHtml(displayNodeName(item))}</span>
-              <span class="largest-path-size">${formatNodeSize(item)}</span>
-              <span class="largest-path-fill" style="width:${Math.max(3, share * 100)}%"></span>
-            </button>
-          `;
-        })
-        .join("")}
       </div>
     </section>
   `;
@@ -420,6 +376,8 @@ function renderDonut(node: ScanNode) {
               data-drill="${encodePath(segment.node.path)}"
               data-hover-path="${encodePath(segment.node.path)}"
               data-hover-top="${encodePath(segment.topPath)}"
+              data-open-path="${encodePath(segment.node.path)}"
+              data-drag-path="${encodePath(segment.node.path)}"
               data-tip-name="${escapeHtml(displayNodeName(segment.node))}"
               data-tip-size="${formatNodeSize(segment.node)}"
               data-tip-share="${formatPercent(segment.share)}"
@@ -452,7 +410,7 @@ function renderDrillList(node: ScanNode) {
   return `
     <div class="panel-header">
       <h2>Contents</h2>
-      <span>${children.length}</span>
+      <span class="panel-count">${children.length} items</span>
     </div>
     <div class="item-list">
       ${children
@@ -462,16 +420,16 @@ function renderDrillList(node: ScanNode) {
           const color = palette[index % palette.length];
           const canQueue = !child.synthetic && child.scanState === "complete";
           return `
-            <div class="item-row" draggable="${canQueue}" data-drag-path="${encodePath(child.path)}" data-sync-path="${encodePath(child.path)}">
+            <div class="item-row" data-drag-path="${encodePath(child.path)}" data-sync-path="${encodePath(child.path)}" data-open-path="${encodePath(child.path)}">
               <button class="item-main" data-drill="${encodePath(child.path)}">
                 <span class="dot" style="background:${color}"></span>
                 <span class="item-name">${escapeHtml(displayNodeName(child))}</span>
                 <span class="item-size">${formatNodeSize(child)}${child.scanState !== "complete" ? " · pending" : ""}</span>
               </button>
-              <div class="item-share">
+              <div class="item-share" style="--row-color:${color}">
                 <span style="width:${Math.max(1, share * 100)}%"></span>
               </div>
-              <button class="btn-icon-outline" data-tooltip="Queue for Recycle Bin" data-queue="${encodePath(child.path)}" ${canQueue ? "" : "disabled"}>
+              <button class="btn-icon-outline queue-button" aria-label="Queue for Recycle Bin" data-queue="${encodePath(child.path)}" ${canQueue ? "" : "disabled"}>
                 <i data-lucide="trash-2"></i>
               </button>
             </div>
@@ -483,35 +441,35 @@ function renderDrillList(node: ScanNode) {
 }
 
 function renderCollector() {
-  const total = collector.reduce((sum, item) => sum + item.size, 0);
   return `
     <footer class="collector" data-collector>
-      <div class="collector-label">
-        <i data-lucide="recycle"></i>
-        <span>Collector</span>
-        <strong>${formatBytes(total)}</strong>
+      <div class="collector-target">
+        <span class="collector-orb"><i data-lucide="recycle"></i></span>
+        <div class="collector-items">
+          ${
+            collector.length
+              ? collector
+                  .map(
+                    (item) => `
+                      <button class="collector-chip" data-remove="${encodePath(item.path)}">
+                        <span>${escapeHtml(item.name)}</span>
+                        <small>${formatBytes(item.size)}</small>
+                        <i data-lucide="x"></i>
+                      </button>
+                    `,
+                  )
+                  .join("")
+              : `<span class="collector-empty">Drag and drop files here to collect them</span>`
+          }
+        </div>
       </div>
-      <div class="collector-items">
-        ${
-          collector.length
-            ? collector
-                .map(
-                  (item) => `
-                    <button class="collector-chip" data-remove="${encodePath(item.path)}">
-                      <span>${escapeHtml(item.name)}</span>
-                      <small>${formatBytes(item.size)}</small>
-                      <i data-lucide="x"></i>
-                    </button>
-                  `,
-                )
-                .join("")
-            : `<span class="collector-empty">Drag items here</span>`
-        }
-      </div>
-      <button class="btn-sm-destructive" data-recycle ${collector.length ? "" : "disabled"}>
-        <i data-lucide="trash-2"></i>
-        Move to Recycle Bin
-      </button>
+      ${
+        collector.length
+          ? `<button class="btn-sm-destructive collector-delete" data-recycle aria-label="Move collected items to Recycle Bin">
+              <i data-lucide="trash-2"></i>
+            </button>`
+          : ""
+      }
     </footer>
   `;
 }
@@ -524,15 +482,12 @@ function attachHandlers() {
       void startScan(result.root.path);
     }
   });
-  document.querySelector("[data-root]")?.addEventListener("click", () => {
-    if (result) {
-      currentPath = result.root.path;
-      render();
-    }
-  });
 
   document.querySelectorAll<HTMLElement>("[data-drill]").forEach((element) => {
     element.addEventListener("click", () => {
+      if (performance.now() - lastInternalDragEnded < 220) {
+        return;
+      }
       const path = decodePath(element.dataset.drill ?? "");
       if (path && result && findNode(result.root, path)?.kind !== "file") {
         if (isScanning) {
@@ -569,14 +524,6 @@ function attachHandlers() {
     });
   });
 
-  document.querySelectorAll<HTMLElement>("[data-drag-path]").forEach((row) => {
-    row.addEventListener("dragstart", (event) => {
-      const dragEvent = event as DragEvent;
-      dragEvent.dataTransfer?.setData("text/pathlight-path", decodePath(row.dataset.dragPath ?? ""));
-      dragEvent.dataTransfer?.setData("text/plain", decodePath(row.dataset.dragPath ?? ""));
-    });
-  });
-
   const collectorDrop = document.querySelector<HTMLElement>("[data-collector]");
   collectorDrop?.addEventListener("dragover", (event) => {
     event.preventDefault();
@@ -592,6 +539,8 @@ function attachHandlers() {
 
   document.querySelector("[data-recycle]")?.addEventListener("click", () => void recycleCollector());
   attachLinkedHover();
+  attachContextMenus();
+  attachInternalDrag();
 }
 
 async function chooseFolder() {
@@ -620,7 +569,6 @@ async function startScan(path: string) {
   scanStartedAt = performance.now();
   displayedScanProgress = 2;
   lastProgressValues = {
-    status: "",
     path: "",
     summary: "",
   };
@@ -707,6 +655,29 @@ async function resizeWindow(size: LogicalSize) {
   }
 }
 
+async function updateWindowTitle(node: ScanNode | null) {
+  const elapsedMs = progress?.elapsedMs ?? result?.elapsedMs ?? 0;
+  let title = "Pathlight";
+
+  if (node) {
+    const elapsed = elapsedMs > 0 ? ` in ${formatDuration(elapsedMs)}` : "";
+    title = `${displayNodeName(node)} - ${formatNodeSize(node)}${elapsed} - Pathlight`;
+  } else if (isScanning && activeScanRoot) {
+    title = `${scanLocation(progress?.currentPath ?? activeScanRoot, activeScanRoot)} - Analyzing - Pathlight`;
+  }
+
+  if (title === lastWindowTitle) {
+    return;
+  }
+
+  lastWindowTitle = title;
+  try {
+    await getCurrentWindow().setTitle(title);
+  } catch (error) {
+    console.warn("Pathlight title update failed", error);
+  }
+}
+
 function updateProgressUi() {
   if (!progress) {
     return;
@@ -718,13 +689,9 @@ function updateProgressUi() {
   }
   lastProgressPaint = now;
 
-  const status = document.querySelector<HTMLElement>(".topbar-status");
-  const statusText = result?.root
-    ? `${formatBytes(result.root.totalSize)} found in ${formatDuration(progress.elapsedMs)}`
-    : "Analyzing...";
-  if (status && lastProgressValues.status !== statusText) {
-    status.textContent = statusText;
-    lastProgressValues.status = statusText;
+  if (result) {
+    const current = findNode(result.root, currentPath) ?? result.root;
+    void updateWindowTitle(current);
   }
 
   const path = document.querySelector<HTMLElement>("[data-scan-path]");
@@ -812,9 +779,9 @@ function visibleChildren(node: ScanNode) {
 function buildDonutSegments(node: ScanNode) {
   const segments: DonutSegment[] = [];
   const rootTotal = Math.max(1, node.totalSize);
-  const innerRadius = 16;
-  const ringWidth = 7.2;
-  const ringGap = 1;
+  const innerRadius = 18.5;
+  const ringWidth = 6.6;
+  const ringGap = 0.9;
   let segmentCount = 0;
 
   const append = (
@@ -977,6 +944,208 @@ function attachLinkedHover() {
     });
     element.addEventListener("mouseleave", clear);
   });
+}
+
+function attachContextMenus() {
+  document.querySelectorAll<HTMLElement>("[data-open-path]").forEach((element) => {
+    element.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const path = decodePath(element.dataset.openPath ?? "");
+      if (path) {
+        showContextMenu(event as MouseEvent, path);
+      }
+    });
+  });
+}
+
+function attachInternalDrag() {
+  if (!result) {
+    return;
+  }
+
+  const collectorTarget = document.querySelector<HTMLElement>("[data-collector]");
+  if (!collectorTarget) {
+    return;
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-drag-path]").forEach((source) => {
+    source.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const target = event.target instanceof Element ? event.target : null;
+      if (
+        target?.closest(
+          "[data-queue], [data-remove], [data-recycle], [data-open], [data-rescan], [data-cancel], [data-breadcrumb], .collector-chip, .context-menu",
+        )
+      ) {
+        return;
+      }
+
+      const path = decodePath(source.dataset.dragPath ?? "");
+      const node = findNode(result!.root, path);
+      if (!node || node.synthetic) {
+        return;
+      }
+
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let dragging = false;
+      let isOverCollector = false;
+      let ghost: HTMLElement | null = null;
+
+      const moveGhost = (clientX: number, clientY: number) => {
+        if (ghost) {
+          ghost.style.transform = `translate(${clientX + 14}px, ${clientY + 12}px)`;
+        }
+      };
+
+      const updateCollectorState = (clientX: number, clientY: number) => {
+        const element = document.elementFromPoint(clientX, clientY);
+        isOverCollector = Boolean(element?.closest("[data-collector]"));
+        collectorTarget.classList.toggle("is-over", isOverCollector);
+      };
+
+      const beginDrag = (moveEvent: PointerEvent) => {
+        dragging = true;
+        lastInternalDragEnded = performance.now();
+        hideContextMenu();
+        source.classList.add("is-drag-source");
+        document.body.classList.add("is-internal-dragging");
+        ghost = document.createElement("div");
+        ghost.className = "internal-drag-ghost";
+        ghost.innerHTML = `
+          <strong>${escapeHtml(displayNodeName(node))}</strong>
+          <span>${formatNodeSize(node)}</span>
+        `;
+        document.body.appendChild(ghost);
+        moveGhost(moveEvent.clientX, moveEvent.clientY);
+        updateCollectorState(moveEvent.clientX, moveEvent.clientY);
+      };
+
+      const cleanup = () => {
+        source.classList.remove("is-drag-source");
+        document.body.classList.remove("is-internal-dragging");
+        collectorTarget.classList.remove("is-over");
+        ghost?.remove();
+        document.removeEventListener("pointermove", onPointerMove);
+        document.removeEventListener("pointerup", onPointerUp);
+        document.removeEventListener("pointercancel", onPointerCancel);
+      };
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        const distance = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+        if (!dragging && distance < 6) {
+          return;
+        }
+
+        if (!dragging) {
+          beginDrag(moveEvent);
+        }
+
+        moveEvent.preventDefault();
+        moveGhost(moveEvent.clientX, moveEvent.clientY);
+        updateCollectorState(moveEvent.clientX, moveEvent.clientY);
+      };
+
+      const onPointerUp = (upEvent: PointerEvent) => {
+        if (dragging) {
+          upEvent.preventDefault();
+          lastInternalDragEnded = performance.now();
+          updateCollectorState(upEvent.clientX, upEvent.clientY);
+          if (isOverCollector) {
+            queueNode(path);
+          }
+        }
+        cleanup();
+      };
+
+      const onPointerCancel = () => {
+        if (dragging) {
+          lastInternalDragEnded = performance.now();
+        }
+        cleanup();
+      };
+
+      document.addEventListener("pointermove", onPointerMove, { passive: false });
+      document.addEventListener("pointerup", onPointerUp);
+      document.addEventListener("pointercancel", onPointerCancel);
+    });
+  });
+}
+
+function showContextMenu(event: MouseEvent, path: string) {
+  hideContextMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  menu.innerHTML = `
+    <button type="button">
+      <i data-lucide="folder-open"></i>
+      <span>Open in ${escapeHtml(fileViewerName())}</span>
+    </button>
+  `;
+
+  const button = menu.querySelector("button");
+  button?.addEventListener("click", () => {
+    hideContextMenu();
+    void openNativePath(path);
+  });
+
+  document.body.appendChild(menu);
+  createIcons({ icons });
+
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
+  const x = Math.min(window.innerWidth - width - 8, Math.max(8, event.clientX));
+  const y = Math.min(window.innerHeight - height - 8, Math.max(8, event.clientY));
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  const onPointerDown = (pointerEvent: PointerEvent) => {
+    if (!menu.contains(pointerEvent.target as Node)) {
+      hideContextMenu();
+    }
+  };
+  const onKeyDown = (keyboardEvent: KeyboardEvent) => {
+    if (keyboardEvent.key === "Escape") {
+      hideContextMenu();
+    }
+  };
+
+  const pointerTimer = window.setTimeout(() => document.addEventListener("pointerdown", onPointerDown), 0);
+  document.addEventListener("keydown", onKeyDown);
+  contextMenuCleanup = () => {
+    window.clearTimeout(pointerTimer);
+    document.removeEventListener("pointerdown", onPointerDown);
+    document.removeEventListener("keydown", onKeyDown);
+    menu.remove();
+  };
+}
+
+function hideContextMenu() {
+  contextMenuCleanup?.();
+  contextMenuCleanup = null;
+}
+
+async function openNativePath(path: string) {
+  try {
+    await invoke("open_path", { path });
+  } catch (error) {
+    console.warn("Pathlight open path failed", error);
+  }
+}
+
+function fileViewerName() {
+  if (navigator.userAgent.includes("Windows")) {
+    return "File Explorer";
+  }
+  if (navigator.userAgent.includes("Mac")) {
+    return "Finder";
+  }
+  return "file manager";
 }
 
 function formatBytes(bytes: number) {
