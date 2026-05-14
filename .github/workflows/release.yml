@@ -39,9 +39,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri/target/release/bundle/portable | Out-Null
+          $version = "${{ github.ref_name }}".TrimStart("v")
           Compress-Archive `
             -Path src-tauri/target/release/pathlight.exe `
-            -DestinationPath src-tauri/target/release/bundle/portable/Pathlight_${{ github.ref_name }}_x64-portable.zip `
+            -DestinationPath "src-tauri/target/release/bundle/portable/Pathlight_${version}_x64-portable.zip" `
             -Force
 
       - name: Publish release assets

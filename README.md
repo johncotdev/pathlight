@@ -16,12 +16,12 @@ The latest preview build is available from [GitHub Releases](https://github.com/
 
 Recommended for most users:
 
-- `Pathlight_0.1.0_x64-setup.exe` - standard Windows installer.
+- `Pathlight_<version>_x64-setup.exe` - standard Windows installer.
 
 Also available:
 
-- `Pathlight_0.1.0_x64-portable.zip` - no-install portable build.
-- `Pathlight_0.1.0_x64_en-US.msi` - managed or corporate deployment.
+- `Pathlight_<version>_x64-portable.zip` - no-install portable build.
+- `Pathlight_<version>_x64_en-US.msi` - managed or corporate deployment.
 
 Pathlight is not code-signed yet, so Windows SmartScreen may warn on first launch.
 
@@ -51,8 +51,8 @@ pnpm dev:web
 Pathlight releases are versioned with Git tags:
 
 ```powershell
-git tag -a v0.1.0 -m "Pathlight 0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "Pathlight 0.1.1"
+git push origin v0.1.1
 ```
 
 The release workflow builds the Windows installer, MSI, and portable zip, then uploads them to the matching GitHub Release.
