@@ -68,6 +68,7 @@ const ANALYSIS_WINDOW = new LogicalSize(560, 390);
 const RESULT_WINDOW = new LogicalSize(1180, 760);
 const DONUT_MAX_DEPTH = 4;
 const DONUT_MAX_CHILDREN = 48;
+const isDemoMode = new URLSearchParams(window.location.search).has("demo");
 document.documentElement.classList.add("dark");
 document.documentElement.style.colorScheme = "dark";
 
@@ -136,7 +137,189 @@ const scanPhrases = [
   "Drawing the space map...",
 ];
 
+function createDemoResult(): ScanResult {
+  const root = demoDir(
+    "",
+    "C:",
+    [
+      demoDir("C:\\", "Program Files", [
+        demoDir("C:\\Program Files", "PostgreSQL", [
+          demoDir("C:\\Program Files\\PostgreSQL", "17", [
+            demoDir("C:\\Program Files\\PostgreSQL\\17", "data", [
+              demoDir("C:\\Program Files\\PostgreSQL\\17\\data", "base", [
+                demoDir("C:\\Program Files\\PostgreSQL\\17\\data\\base", "522247", [
+                  demoFile("C:\\Program Files\\PostgreSQL\\17\\data\\base\\522247", "16725", gb(86)),
+                  demoFile("C:\\Program Files\\PostgreSQL\\17\\data\\base\\522247", "16726", gb(63)),
+                  demoFile("C:\\Program Files\\PostgreSQL\\17\\data\\base\\522247", "16727", gb(42)),
+                  demoFile("C:\\Program Files\\PostgreSQL\\17\\data\\base\\522247", "pgsql_tmp", gb(29)),
+                ]),
+                demoDir("C:\\Program Files\\PostgreSQL\\17\\data\\base", "22163", [], gb(18)),
+                demoDir("C:\\Program Files\\PostgreSQL\\17\\data\\base", "16408", [], gb(14)),
+              ]),
+              demoDir("C:\\Program Files\\PostgreSQL\\17\\data", "pg_wal", [], gb(18)),
+              demoDir("C:\\Program Files\\PostgreSQL\\17\\data", "global", [], gb(1.8)),
+            ]),
+          ]),
+        ]),
+        demoDir("C:\\Program Files", "Microsoft Visual Studio", [], gb(11.4)),
+        demoDir("C:\\Program Files", "WindowsApps", [], gb(8.7)),
+        demoDir("C:\\Program Files", "Docker", [], gb(5.9)),
+      ]),
+      demoDir("C:\\", "Users", [
+        demoDir("C:\\Users", "Alex", [
+          demoDir("C:\\Users\\Alex", "Videos", [
+            demoDir("C:\\Users\\Alex\\Videos", "Captures", [], gb(34)),
+            demoDir("C:\\Users\\Alex\\Videos", "Exports", [], gb(19)),
+          ]),
+          demoDir("C:\\Users\\Alex", "AppData", [
+            demoDir("C:\\Users\\Alex\\AppData", "Local", [
+              demoDir("C:\\Users\\Alex\\AppData\\Local", "Packages", [], gb(16)),
+              demoDir("C:\\Users\\Alex\\AppData\\Local", "Temp", [], gb(12)),
+              demoDir("C:\\Users\\Alex\\AppData\\Local", "pnpm-store", [], gb(9)),
+            ]),
+            demoDir("C:\\Users\\Alex\\AppData", "Roaming", [], gb(8)),
+          ]),
+          demoDir("C:\\Users\\Alex", "Downloads", [
+            demoFile("C:\\Users\\Alex\\Downloads", "Windows11.iso", gb(6.3)),
+            demoFile("C:\\Users\\Alex\\Downloads", "training-footage.zip", gb(5.8)),
+            demoDir("C:\\Users\\Alex\\Downloads", "Installers", [], gb(9.2)),
+            demoDir("C:\\Users\\Alex\\Downloads", "Archives", [], gb(8.4)),
+          ]),
+          demoProjects(),
+          demoDir("C:\\Users\\Alex", "Pictures", [], gb(13.2)),
+        ]),
+        demoDir("C:\\Users", "Public", [], gb(7.8)),
+      ]),
+      demoDir("C:\\", "Games", [
+        demoDir("C:\\Games", "SteamLibrary", [
+          demoDir("C:\\Games\\SteamLibrary", "steamapps", [
+            demoDir("C:\\Games\\SteamLibrary\\steamapps", "common", [
+              demoDir("C:\\Games\\SteamLibrary\\steamapps\\common", "Baldurs Gate 3", [], gb(31)),
+              demoDir("C:\\Games\\SteamLibrary\\steamapps\\common", "Cyberpunk 2077", [], gb(24)),
+              demoDir("C:\\Games\\SteamLibrary\\steamapps\\common", "Forza Horizon 5", [], gb(21)),
+            ]),
+          ]),
+        ]),
+      ]),
+      demoDir("C:\\", "Media", [
+        demoDir("C:\\Media", "Photos", [], gb(38)),
+        demoDir("C:\\Media", "Music", [], gb(17)),
+        demoDir("C:\\Media", "Archive", [], gb(22)),
+      ]),
+      demoDir("C:\\", "Windows", [
+        demoDir("C:\\Windows", "WinSxS", [], gb(26.2)),
+        demoDir("C:\\Windows", "Installer", [], gb(8.1)),
+        demoDir("C:\\Windows", "System32", [], gb(6.3)),
+        demoDir("C:\\Windows", "SoftwareDistribution", [], gb(5.1)),
+      ]),
+      demoFile("C:\\", "hiberfil.sys", gb(25.5)),
+      demoFile("C:\\", "pagefile.sys", gb(22)),
+    ],
+  );
+
+  return {
+    scanId: 1,
+    root,
+    elapsedMs: 17_200,
+    entries: 2_148_762,
+    errors: 14,
+    deferred: 0,
+    mode: "demo",
+  };
+}
+
+function demoProjects() {
+  return demoDir("C:\\Users\\Alex", "Projects", [
+    demoDir("C:\\Users\\Alex\\Projects", "Pathlight", [
+      demoDir("C:\\Users\\Alex\\Projects\\Pathlight", "src-tauri", [], gb(1.6)),
+      demoDir("C:\\Users\\Alex\\Projects\\Pathlight", "node_modules", [], gb(1.2)),
+      demoDir("C:\\Users\\Alex\\Projects\\Pathlight", "target", [], gb(1.5)),
+      demoDir("C:\\Users\\Alex\\Projects\\Pathlight", "assets", [], mb(260)),
+    ]),
+    demoDir("C:\\Users\\Alex\\Projects", "ClientPortal", [
+      demoDir("C:\\Users\\Alex\\Projects\\ClientPortal", ".next", [], gb(2.9)),
+      demoDir("C:\\Users\\Alex\\Projects\\ClientPortal", "node_modules", [], gb(1.8)),
+      demoDir("C:\\Users\\Alex\\Projects\\ClientPortal", "public", [], mb(420)),
+    ]),
+    demoDir("C:\\Users\\Alex\\Projects", "BsnMigrator", [
+      demoDir("C:\\Users\\Alex\\Projects\\BsnMigrator", "bin", [], gb(1.3)),
+      demoDir("C:\\Users\\Alex\\Projects\\BsnMigrator", "obj", [], gb(0.9)),
+      demoDir("C:\\Users\\Alex\\Projects\\BsnMigrator", "packages", [], gb(0.8)),
+    ]),
+    demoDir("C:\\Users\\Alex\\Projects", "DesignSystem", [], gb(2.1)),
+    demoDir("C:\\Users\\Alex\\Projects", "Archive", [], gb(1.7)),
+    demoDir("C:\\Users\\Alex\\Projects", "Experiments", [], gb(1.4)),
+  ]);
+}
+
+function demoDir(parentPath: string, name: string, children: ScanNode[], selfSize = 0): ScanNode {
+  const path = demoPath(parentPath, name);
+  const totalSize = selfSize + children.reduce((sum, child) => sum + child.totalSize, 0);
+  const fileCount = children.reduce((sum, child) => sum + child.fileCount, 0);
+  const childDirectoryCount = children.filter((child) => child.kind === "directory").length;
+  const dirCount = childDirectoryCount + children.reduce((sum, child) => sum + child.dirCount, 0);
+
+  return {
+    name,
+    path,
+    kind: "directory",
+    totalSize,
+    selfSize,
+    fileCount,
+    dirCount,
+    errorCount: 0,
+    deferredCount: 0,
+    scanState: "complete",
+    synthetic: false,
+    children,
+  };
+}
+
+function demoFile(parentPath: string, name: string, size: number): ScanNode {
+  return {
+    name,
+    path: demoPath(parentPath, name),
+    kind: "file",
+    totalSize: size,
+    selfSize: size,
+    fileCount: 1,
+    dirCount: 0,
+    errorCount: 0,
+    deferredCount: 0,
+    scanState: "complete",
+    synthetic: false,
+    children: [],
+  };
+}
+
+function demoPath(parentPath: string, name: string) {
+  if (!parentPath) {
+    return `${name}\\`;
+  }
+
+  return parentPath.endsWith("\\") ? `${parentPath}${name}` : `${parentPath}\\${name}`;
+}
+
+function gb(value: number) {
+  return Math.round(value * 1024 ** 3);
+}
+
+function mb(value: number) {
+  return Math.round(value * 1024 ** 2);
+}
+
 async function boot() {
+  if (isDemoMode) {
+    result = createDemoResult();
+    activeScanRoot = result.root.path;
+    currentPath =
+      new URLSearchParams(window.location.search).get("demo") === "projects"
+        ? "C:\\Users\\Alex\\Projects"
+        : result.root.path;
+    render();
+    return;
+  }
+
   render();
   await listen<ScanProgress>("scan-progress", (event) => {
     if (event.payload.scanId !== activeScanId) {
@@ -671,11 +854,20 @@ async function updateWindowTitle(node: ScanNode | null) {
   }
 
   lastWindowTitle = title;
+  if (!hasTauriRuntime()) {
+    document.title = title;
+    return;
+  }
+
   try {
     await getCurrentWindow().setTitle(title);
   } catch (error) {
     console.warn("Pathlight title update failed", error);
   }
+}
+
+function hasTauriRuntime() {
+  return "__TAURI_INTERNALS__" in window;
 }
 
 function updateProgressUi() {
